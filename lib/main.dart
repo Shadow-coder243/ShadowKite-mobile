@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'services/api_service.dart';
+import 'services/token_storage_service.dart';
 
 void main() {
   runApp(const ShadowKiteApp());
@@ -76,6 +78,115 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _currentIndex = 0;
+  final TokenStorageService _tokenStorage = TokenStorageService();
+  final ApiService _apiService = ApiService();
+  bool _isAuthenticated = false;
+  bool _isLoadingAuth = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAuthStatus();
+  }
+
+  Future<void> _checkAuthStatus() async {
+    final hasToken = await _tokenStorage.hasToken();
+    if (mounted) {
+      setState(() {
+        _isAuthenticated = hasToken;
+        _isLoadingAuth = false;
+      });
+    }
+  }
+
+  Future<void> _handleLogout() async {
+    await _apiService.logout();
+    if (mounted) {
+      setState(() {
+        _isAuthenticated = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Déconnexion réussie'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
+  }
+
+  void _showLoginDialog() {
+    final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Connexion'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(labelText: 'Email'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Mot de passe'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                try {
+                  await _apiService.login(
+                    emailController.text,
+                    passwordController.text,
+                  );
+                  if (mounted) {
+                    setState(() => _isAuthenticated = true);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text('Connexion réussie ! Token JWT stocké en sécurité.'),
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Erreur de connexion : $e'),
+                        behavior: SnackBarBehavior.floating,
+                        backgroundColor: Colors.red,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    );
+                  }
+                }
+              },
+              child: const Text('Se connecter'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   static const _titles = ['Accueil', 'Mon CV', 'Portfolio', 'Profil'];
 
@@ -128,6 +239,24 @@ class _AppShellState extends State<AppShell> {
           ],
         ),
         actions: [
+          if (_isLoadingAuth)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else if (_isAuthenticated)
+            IconButton(
+              onPressed: _handleLogout,
+              tooltip: 'Se déconnecter',
+              icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+            )
+          else
+            IconButton(
+              onPressed: _showLoginDialog,
+              tooltip: 'Se connecter',
+              icon: const Icon(Icons.login_rounded, color: Color(0xFF2F6FE4)),
+            ),
           IconButton(
             onPressed: () {},
             tooltip: 'Notifications',
